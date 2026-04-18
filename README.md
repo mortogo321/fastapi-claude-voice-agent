@@ -11,9 +11,9 @@ Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claud
 - **Streaming TTS** with ElevenLabs (eleven_turbo_v2_5)
 - **Tool use** — appointment availability, booking, SMS confirmation
 - **Persistence** — call sessions, transcript turns, tool calls (PostgreSQL + SQLAlchemy 2.0 async + Alembic)
-- **Observability** — structlog JSON logs, request IDs, latency metrics per pipeline stage
-- **Containerized** — multi-stage Dockerfile, docker-compose for local dev (Postgres + Redis)
-- **CI** — ruff + pytest + docker build via GitHub Actions
+- **Observability** — structlog JSON logs with per-stage latency (STT endpointing, LLM TTFT, tool call, TTS TTFB)
+- **Containerized** — multi-stage Dockerfile (non-root, healthcheck), docker-compose for local dev (Postgres + Redis + one-shot Alembic migration)
+- **CI** — code quality (ruff format + lint + mypy), tests with coverage, docker build — GitHub Actions
 
 ## Architecture
 
@@ -58,13 +58,14 @@ cp .env.example .env
 ### 3. Run with Docker
 ```bash
 docker compose up --build
+# Compose order: db → migrate (alembic upgrade head, exits 0) → app
 # API:    http://localhost:8000
 # Health: http://localhost:8000/health
 # Docs:   http://localhost:8000/docs
 ```
 
 ### 4. Wire up Twilio
-Point your Twilio number's **Voice → A Call Comes In** webhook to:
+Point your Twilio number's **Voice → A Call Comes In** webhook to (HTTP `POST`):
 ```
 https://<your-ngrok>.ngrok.app/voice/incoming
 ```
@@ -72,10 +73,16 @@ https://<your-ngrok>.ngrok.app/voice/incoming
 ### 5. Call it
 Dial your Twilio number. The agent answers, listens, and books an appointment.
 
+### Browser WebRTC demo
+The same orchestrator backs `wss://<host>/webrtc/signal` for low-latency
+browser demos (PCM16 16kHz mono, base64 frames). Useful for showing the
+pipeline without owning a phone number.
+
 ## Local development (without Docker)
 
 ```bash
-uv sync                   # or: pip install -e ".[dev]"
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"   # or: uv pip install -e ".[dev]" if you use uv
 docker compose up -d db redis
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
@@ -90,23 +97,40 @@ pytest -q
 ## Project layout
 
 ```
-app/
-├── main.py              # FastAPI app, lifespan, health
-├── config.py            # pydantic-settings
-├── logging.py           # structlog JSON logger
-├── routers/
-│   ├── twilio.py        # /voice/incoming TwiML + /voice/stream WS
-│   ├── webrtc.py        # browser WebRTC demo
-│   └── sessions.py      # GET /sessions/{id} for replay
-├── pipeline/
-│   ├── orchestrator.py  # ties STT → LLM → TTS together per call
-│   ├── stt_deepgram.py  # streaming STT client
-│   ├── llm_claude.py    # Anthropic SDK, manual tool loop, caching
-│   ├── tts_eleven.py    # streaming TTS client
-│   └── audio.py         # μ-law/PCM conversion
-├── tools/               # tool definitions + handlers
-├── persistence/         # SQLAlchemy 2.0 async models + repos
-└── prompts/system.md    # cached system prompt
+.
+├── app/
+│   ├── main.py                  # FastAPI app, lifespan, /health
+│   ├── config.py                # pydantic-settings
+│   ├── logging.py               # structlog JSON logger
+│   ├── routers/
+│   │   ├── twilio.py            # POST /voice/incoming + WS /voice/stream
+│   │   ├── webrtc.py            # WS /webrtc/signal
+│   │   └── sessions.py          # GET /sessions/{call_sid}
+│   ├── pipeline/
+│   │   ├── orchestrator.py      # per-call STT ↔ LLM ↔ TTS coordinator
+│   │   ├── stt_deepgram.py      # Deepgram Nova-3 streaming WS client
+│   │   ├── llm_claude.py        # Anthropic SDK, manual tool loop, caching
+│   │   ├── tts_eleven.py        # ElevenLabs streaming TTS client
+│   │   └── audio.py             # μ-law ⇄ PCM16 conversion
+│   ├── tools/
+│   │   ├── registry.py          # name → spec + handler map
+│   │   ├── check_availability.py
+│   │   ├── book_slot.py
+│   │   └── send_confirmation.py # Twilio SMS (no-op without creds)
+│   ├── persistence/
+│   │   ├── db.py                # async engine + session_scope()
+│   │   ├── models.py            # CallSession, TranscriptTurn, ToolCallRecord
+│   │   └── repositories.py      # SessionRepository façade
+│   └── prompts/system.md        # cached system prompt
+├── migrations/                  # Alembic env + versions/
+│   └── versions/0001_initial_schema.py
+├── tests/                       # pytest (audio, tools, llm wiring, health)
+├── docs/ARCHITECTURE.md         # pipeline, latency budget, design rationale
+├── .github/workflows/ci.yml     # quality → test → docker build
+├── Dockerfile                   # multi-stage, non-root, healthcheck
+├── docker-compose.yml           # db + redis + one-shot migrate + app
+├── alembic.ini
+└── pyproject.toml               # deps + ruff + pytest + mypy config
 ```
 
 ## Design notes
