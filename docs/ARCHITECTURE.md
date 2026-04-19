@@ -85,6 +85,23 @@ The SDK's `tool_runner` is convenient for batch agents but does not let us
 start TTS the moment the first text block streams in or short-circuit on
 barge-in. For voice latency, we run the loop ourselves.
 
+### Real barge-in via task cancellation
+Assistant playback runs as a fire-and-forget `asyncio.Task`
+(`_run_playback`). The STT consumer loop stays free to receive interim
+Deepgram transcripts while we speak; the moment a partial transcript
+exceeds `BARGE_IN_MIN_CHARS`, the consumer calls `task.cancel()` on the
+playback task. `_run_playback` catches `CancelledError`, skips the DB
+persist (we never actually finished speaking), and the next final
+transcript drives the next turn. No polling, no `_speaking` booleans —
+the task lifecycle *is* the speaking state.
+
+### Protocol-typed pipeline
+`LLMClient`, `STTClient`, and `TTSClient` are `typing.Protocol` classes
+exposing only the methods the orchestrator actually calls. Concrete
+implementations (`ClaudeAgent`, `DeepgramStream`, `ElevenLabsTTS`) satisfy
+them structurally. Tests inject tiny fakes through the orchestrator's
+keyword-only constructor arguments — no network, no monkey-patching.
+
 ### Deepgram Nova-3 multilingual
 Sub-300ms partials, native English+Thai mix in a single stream, smart-
 formatted finals. Confidence scores per word would let us tune backchannel
@@ -99,11 +116,31 @@ Twilio; WebRTC clients consume PCM16 directly.
 Vanilla, batteries-included. Sessions, turns, and tool calls are all small
 JSON-friendly rows; we don't need a vector or time-series store yet.
 
+## Hardening already in the codebase
+
+- **Twilio webhook HMAC validation** (`app/security.py`) on `/voice/incoming`.
+  Rebuilds the URL from `PUBLIC_BASE_URL` + path so verification survives
+  any reverse proxy (ngrok, Cloudflare Tunnel, load balancer). Opt-in
+  bypass via `TWILIO_VALIDATE_SIGNATURE=false` for local curl testing.
+- **Global concurrency cap** — `CallGate` (`app/concurrency.py`) is a
+  semaphore wired into both the Twilio and WebRTC routers. The Twilio
+  branch returns polite TwiML (`<Say>All our agents are busy…</Say>`)
+  when full; the WebRTC branch rejects with WS close code 1013.
+- **Fail-fast settings** — `Settings._require_secrets_in_production`
+  blocks startup if `env=production` and any external-service secret is
+  missing; `_validate_public_base_url` requires `https` in production.
+- **Request-ID correlation** — `RequestContextMiddleware` mints a UUID
+  per HTTP request, binds it via `structlog.contextvars.bind_contextvars`
+  so every log line from any task handling that request carries the same
+  `request_id`, and echoes it back as `X-Request-ID`.
+- **Transport resilience** — per-provider timeout + retry settings on
+  Anthropic (`max_retries=3`, `timeout=30s`), ElevenLabs (httpx timeout
+  + http2), Deepgram (WS `open_timeout=5s`). Exposed as settings, not
+  hard-coded.
+
 ## Production hardening (not in this POC)
 
 - Replace `_fake_slots` with a real calendar backend.
-- Twilio webhook signature validation on `/voice/incoming`.
-- Per-call rate limit and global concurrency cap.
 - Sentry / OpenTelemetry instrumentation around each pipeline stage.
 - Redis-backed session resume so a dropped WebSocket can reconnect mid-call.
 - Distroless runtime image; AWS ECR + ECS Fargate or Fly.io deploy.

@@ -1,11 +1,13 @@
 """Tool: send a booking confirmation SMS via Twilio.
 
 Falls back to a no-op log entry if Twilio creds are not configured, so the
-demo runs without spending SMS quota.
+demo runs without spending SMS quota. The blocking Twilio client is moved
+to a thread via `asyncio.to_thread` so we don't block the event loop.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.config import get_settings
@@ -33,24 +35,30 @@ send_confirmation_spec: dict[str, Any] = {
 }
 
 
+def _send_sync(account_sid: str, auth_token: str, from_number: str, to: str, body: str) -> str:
+    from twilio.rest import Client  # type: ignore[import-untyped]
+
+    client = Client(account_sid, auth_token)
+    msg = client.messages.create(from_=from_number, to=to, body=body)
+    return str(msg.sid)
+
+
 async def send_confirmation(args: dict[str, Any]) -> dict[str, Any]:
     settings = get_settings()
     to = args["to_phone"]
     body = args["message"]
 
-    if not (
-        settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_from_number
-    ):
+    if not settings.twilio_configured:
         log.warning("sms.skipped.no_credentials", to=to)
         return {"status": "skipped", "reason": "twilio_not_configured", "to": to}
 
-    from twilio.rest import Client
-
-    client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
-    msg = client.messages.create(
-        from_=settings.twilio_from_number,
-        to=to,
-        body=body,
+    sid = await asyncio.to_thread(
+        _send_sync,
+        settings.twilio_account_sid.get_secret_value(),
+        settings.twilio_auth_token.get_secret_value(),
+        settings.twilio_from_number,
+        to,
+        body,
     )
-    log.info("sms.sent", sid=msg.sid, to=to)
-    return {"status": "sent", "sid": msg.sid, "to": to}
+    log.info("sms.sent", sid=sid, to=to)
+    return {"status": "sent", "sid": sid, "to": to}

@@ -1,34 +1,51 @@
 """Streaming TTS via ElevenLabs.
 
-We open one HTTP/2 streaming connection per assistant utterance, push text
-chunks, and yield PCM16 16kHz mono audio bytes back. The orchestrator
-re-encodes to μ-law for Twilio or forwards as-is for WebRTC.
+Protocol-driven (`TTSClient`) so the orchestrator can run against fakes in
+tests. `ElevenLabsTTS` opens one HTTP/2 streaming connection per assistant
+utterance, pushes text, and yields PCM16 16kHz mono bytes back. The
+orchestrator re-encodes to μ-law for Twilio or forwards as-is for WebRTC.
 
-We use the `pcm_16000` output format (no MP3 decode hop) and the
-`eleven_turbo_v2_5` model (sub-300ms time-to-first-byte).
+`pcm_16000` skips the MP3 decode hop; `eleven_turbo_v2_5` gives
+sub-300ms time-to-first-byte.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
+from typing import Protocol
 
 import httpx
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.logging import get_logger
 
 log = get_logger(__name__)
+
+CHUNK_BYTES = 3200  # 100ms at 16kHz PCM16 mono
+
+
+class TTSClient(Protocol):
+    """Surface the orchestrator needs from a text-to-speech client."""
+
+    def synthesize_stream(self, text: str) -> AsyncIterator[bytes]: ...
+    async def aclose(self) -> None: ...
+
+
+class TTSError(RuntimeError):
+    """Raised when the TTS provider returns a non-2xx response."""
 
 
 class ElevenLabsTTS:
     BASE = "https://api.elevenlabs.io/v1"
 
-    def __init__(self) -> None:
-        self._settings = get_settings()
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings or get_settings()
         self._client = httpx.AsyncClient(
             base_url=self.BASE,
-            timeout=httpx.Timeout(30.0, connect=5.0),
+            timeout=httpx.Timeout(
+                self._settings.elevenlabs_timeout_s,
+                connect=5.0,
+            ),
             http2=True,
         )
 
@@ -47,7 +64,7 @@ class ElevenLabsTTS:
             },
         }
         headers = {
-            "xi-api-key": self._settings.elevenlabs_api_key,
+            "xi-api-key": self._settings.elevenlabs_api_key.get_secret_value(),
             "accept": "audio/pcm",
             "content-type": "application/json",
         }
@@ -57,15 +74,15 @@ class ElevenLabsTTS:
         ) as resp:
             if resp.status_code != 200:
                 detail = await resp.aread()
-                log.error("tts.error", status=resp.status_code, detail=detail[:200])
-                raise RuntimeError(f"ElevenLabs TTS failed: {resp.status_code}")
-            async for chunk in resp.aiter_bytes(chunk_size=3200):
+                log.error(
+                    "tts.error",
+                    status=resp.status_code,
+                    detail=detail[:200].decode("utf-8", "replace"),
+                )
+                raise TTSError(f"ElevenLabs TTS failed: {resp.status_code}")
+            async for chunk in resp.aiter_bytes(chunk_size=CHUNK_BYTES):
                 if chunk:
                     yield chunk
 
     async def aclose(self) -> None:
         await self._client.aclose()
-
-
-def safe_json(obj: object) -> str:
-    return json.dumps(obj, ensure_ascii=False, default=str)

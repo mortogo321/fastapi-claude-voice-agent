@@ -1,8 +1,10 @@
 """Streaming STT via Deepgram WebSocket.
 
-We open one WS per call, push PCM16 16kHz mono frames in, and yield
-`(text, is_final)` tuples as they arrive. Partial transcripts let the
-orchestrator decide when to interrupt the assistant for barge-in.
+Protocol-driven (`STTClient`) so the orchestrator can be tested with fakes
+without monkey-patching. `DeepgramStream` opens one WS per call, pushes
+PCM16 16kHz mono frames in, and yields `(text, is_final)` tuples as they
+arrive. Partial transcripts let the orchestrator decide when to interrupt
+the assistant for barge-in.
 """
 
 from __future__ import annotations
@@ -10,11 +12,12 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, Protocol
 
 import websockets
+from websockets.asyncio.client import ClientConnection
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.logging import get_logger
 
 log = get_logger(__name__)
@@ -28,14 +31,25 @@ DEEPGRAM_WS = (
     "&channels=1"
     "&interim_results=true"
     "&smart_format=true"
-    "&endpointing=300"
+    "&endpointing={endpointing}"
 )
+
+CONNECT_TIMEOUT_S = 5.0
+
+
+class STTClient(Protocol):
+    """Surface the orchestrator needs from a speech-to-text client."""
+
+    async def connect(self) -> None: ...
+    async def send_pcm(self, pcm16: bytes) -> None: ...
+    def transcripts(self) -> AsyncIterator[tuple[str, bool]]: ...
+    async def close(self) -> None: ...
 
 
 class DeepgramStream:
-    def __init__(self) -> None:
-        self._settings = get_settings()
-        self._ws: Any | None = None
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings or get_settings()
+        self._ws: ClientConnection | None = None
         self._recv_task: asyncio.Task[None] | None = None
         self._queue: asyncio.Queue[tuple[str, bool]] = asyncio.Queue()
         self._closed = asyncio.Event()
@@ -44,14 +58,20 @@ class DeepgramStream:
         url = DEEPGRAM_WS.format(
             model=self._settings.deepgram_model,
             language=self._settings.deepgram_language,
+            endpointing=self._settings.deepgram_endpointing_ms,
         )
-        self._ws = await websockets.connect(
-            url,
-            additional_headers={"Authorization": f"Token {self._settings.deepgram_api_key}"},
-            max_size=4 * 1024 * 1024,
+        api_key = self._settings.deepgram_api_key.get_secret_value()
+        self._ws = await asyncio.wait_for(
+            websockets.connect(
+                url,
+                additional_headers={"Authorization": f"Token {api_key}"},
+                max_size=4 * 1024 * 1024,
+                open_timeout=CONNECT_TIMEOUT_S,
+            ),
+            timeout=CONNECT_TIMEOUT_S,
         )
-        self._recv_task = asyncio.create_task(self._reader())
-        log.info("deepgram.connected")
+        self._recv_task = asyncio.create_task(self._reader(), name="deepgram-reader")
+        log.info("deepgram.connected", endpointing_ms=self._settings.deepgram_endpointing_ms)
 
     async def send_pcm(self, pcm16: bytes) -> None:
         if self._ws is None:
@@ -74,22 +94,33 @@ class DeepgramStream:
                 await self._ws.send(json.dumps({"type": "CloseStream"}))
             except Exception as exc:
                 log.debug("deepgram.close.send_failed", err=str(exc))
-            await self._ws.close()
+            try:
+                await self._ws.close()
+            except Exception as exc:
+                log.debug("deepgram.close.err", err=str(exc))
             self._ws = None
         if self._recv_task is not None:
             self._recv_task.cancel()
+            try:
+                await self._recv_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                log.debug("deepgram.recv_task.cleanup_error", err=str(exc))
 
     async def _reader(self) -> None:
-        assert self._ws is not None
+        ws = self._ws
+        if ws is None:
+            return
         try:
-            async for raw in self._ws:
+            async for raw in ws:
                 if isinstance(raw, bytes):
                     continue
-                msg = json.loads(raw)
+                msg: dict[str, Any] = json.loads(raw)
                 if msg.get("type") != "Results":
                     continue
                 alt = msg.get("channel", {}).get("alternatives", [{}])[0]
-                text = alt.get("transcript", "").strip()
+                text = (alt.get("transcript") or "").strip()
                 is_final = bool(msg.get("is_final"))
                 if text:
                     await self._queue.put((text, is_final))

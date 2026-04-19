@@ -9,11 +9,14 @@ Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claud
 - **Streaming STT** with Deepgram Nova-3 (multilingual: English + Thai)
 - **LLM** Claude Opus 4.7 with **adaptive thinking**, **prompt caching** on the system prompt and tool definitions, and a manual agentic tool-use loop tuned for sub-second voice latency
 - **Streaming TTS** with ElevenLabs (eleven_turbo_v2_5)
+- **Real barge-in** — assistant playback runs as a cancellable `asyncio` task; a partial user transcript interrupts it mid-chunk
 - **Tool use** — appointment availability, booking, SMS confirmation
 - **Persistence** — call sessions, transcript turns, tool calls (PostgreSQL + SQLAlchemy 2.0 async + Alembic)
-- **Observability** — structlog JSON logs with per-stage latency (STT endpointing, LLM TTFT, tool call, TTS TTFB)
+- **Hardening** — Twilio webhook HMAC validation, per-process `CallGate` caps concurrent calls, fail-fast settings validation in production
+- **Observability** — structlog JSON logs, request-ID middleware with contextvars correlation across async boundaries, per-stage latency (STT endpointing, LLM TTFT, tool call, TTS TTFB)
 - **Containerized** — multi-stage Dockerfile (non-root, healthcheck), docker-compose for local dev (Postgres + Redis + one-shot Alembic migration)
-- **CI** — code quality (ruff format + lint + mypy), tests with coverage, docker build — GitHub Actions
+- **CI** — code quality (ruff format + lint + mypy `--strict`), tests with coverage, docker build — GitHub Actions
+- **Typed pipeline** — `LLMClient`/`STTClient`/`TTSClient` Protocols make every external service swappable for fakes in tests
 
 ## Architecture
 
@@ -46,13 +49,17 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive.
 - Docker & docker compose
 - A Twilio number with Programmable Voice
 - Deepgram, ElevenLabs, Anthropic API keys
-- ngrok (for local Twilio webhook)
+- A public HTTPS tunnel to your laptop for Twilio webhooks —
+  [ngrok](https://ngrok.com/), [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+  (`cloudflared tunnel --url http://localhost:8000`), or any equivalent.
 
 ### 2. Configure
 ```bash
 cp .env.example .env
 # fill in ANTHROPIC_API_KEY, DEEPGRAM_API_KEY, ELEVENLABS_API_KEY,
-#   TWILIO_*, DATABASE_URL, REDIS_URL, PUBLIC_BASE_URL (ngrok URL)
+#   TWILIO_*, DATABASE_URL, REDIS_URL, and PUBLIC_BASE_URL
+#   (the https URL of your tunnel, e.g. https://xxx.ngrok.app
+#    or https://xxx.trycloudflare.com)
 ```
 
 ### 3. Run with Docker
@@ -67,8 +74,10 @@ docker compose up --build
 ### 4. Wire up Twilio
 Point your Twilio number's **Voice → A Call Comes In** webhook to (HTTP `POST`):
 ```
-https://<your-ngrok>.ngrok.app/voice/incoming
+https://<your-tunnel-host>/voice/incoming
 ```
+Twilio webhook signatures are HMAC-verified against `PUBLIC_BASE_URL`, so
+that value must match the tunnel URL exactly (including `https://`).
 
 ### 5. Call it
 Dial your Twilio number. The agent answers, listens, and books an appointment.
@@ -81,36 +90,44 @@ pipeline without owning a phone number.
 ## Local development (without Docker)
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"   # or: uv pip install -e ".[dev]" if you use uv
+make install           # create .venv and install app + dev deps
 docker compose up -d db redis
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+make migrate           # alembic upgrade head
+make run               # uvicorn --reload
 ```
 
-## Tests
+## Tests & quality gates
 
 ```bash
-pytest -q
+make test              # pytest
+make lint              # ruff format --check + ruff check
+make typecheck         # mypy --strict
+make fmt               # ruff format + ruff --fix
 ```
+
+`.pre-commit-config.yaml` wires the same gates (plus hadolint and gitleaks)
+into a git hook — run `pre-commit install` once per checkout.
 
 ## Project layout
 
 ```
 .
 ├── app/
-│   ├── main.py                  # FastAPI app, lifespan, /health
-│   ├── config.py                # pydantic-settings
+│   ├── main.py                  # FastAPI app, lifespan, exception handlers, /health
+│   ├── config.py                # pydantic-settings (SecretStr, fail-fast validators)
 │   ├── logging.py               # structlog JSON logger
+│   ├── middleware.py            # request-ID + contextvars binding + access log
+│   ├── security.py              # Twilio webhook HMAC validation
+│   ├── concurrency.py           # CallGate: semaphore + nowait acquire
 │   ├── routers/
 │   │   ├── twilio.py            # POST /voice/incoming + WS /voice/stream
 │   │   ├── webrtc.py            # WS /webrtc/signal
 │   │   └── sessions.py          # GET /sessions/{call_sid}
 │   ├── pipeline/
-│   │   ├── orchestrator.py      # per-call STT ↔ LLM ↔ TTS coordinator
-│   │   ├── stt_deepgram.py      # Deepgram Nova-3 streaming WS client
-│   │   ├── llm_claude.py        # Anthropic SDK, manual tool loop, caching
-│   │   ├── tts_eleven.py        # ElevenLabs streaming TTS client
+│   │   ├── orchestrator.py      # per-call coordinator + cancellable TTS task for barge-in
+│   │   ├── stt_deepgram.py      # Deepgram Nova-3 streaming WS client (STTClient)
+│   │   ├── llm_claude.py        # Anthropic SDK, manual tool loop, caching (LLMClient)
+│   │   ├── tts_eleven.py        # ElevenLabs streaming TTS client (TTSClient)
 │   │   └── audio.py             # μ-law ⇄ PCM16 conversion
 │   ├── tools/
 │   │   ├── registry.py          # name → spec + handler map
@@ -124,11 +141,13 @@ pytest -q
 │   └── prompts/system.md        # cached system prompt
 ├── migrations/                  # Alembic env + versions/
 │   └── versions/0001_initial_schema.py
-├── tests/                       # pytest (audio, tools, llm wiring, health)
+├── tests/                       # pytest (audio, tools, llm wiring, health, orchestrator)
 ├── docs/ARCHITECTURE.md         # pipeline, latency budget, design rationale
 ├── .github/workflows/ci.yml     # quality → test → docker build
+├── .pre-commit-config.yaml      # ruff, mypy, hadolint, gitleaks
 ├── Dockerfile                   # multi-stage, non-root, healthcheck
 ├── docker-compose.yml           # db + redis + one-shot migrate + app
+├── Makefile                     # install / fmt / lint / typecheck / test / run / migrate
 ├── alembic.ini
 └── pyproject.toml               # deps + ruff + pytest + mypy config
 ```

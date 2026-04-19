@@ -9,7 +9,7 @@ Python 3.13 removed the stdlib `audioop`; we depend on `audioop-lts` on 3.13+
 
 from __future__ import annotations
 
-import audioop  # type: ignore[import-not-found]
+import audioop
 import base64
 
 ULAW_RATE = 8000

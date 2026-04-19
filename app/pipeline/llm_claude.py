@@ -22,6 +22,9 @@ Design choices, all from the claude-api skill mandates:
 - Streaming with `client.messages.stream(...)` — required for any voice
   request that may run long; we use `.get_final_message()` to collect the
   full response before resuming the loop.
+- Transport resilience comes from the SDK's `max_retries` (exponential
+  backoff on `APIConnectionError`, 408, 409, 429, 5xx) and per-request
+  `timeout`. We surface both as settings rather than hard-coding them.
 
 NEVER set `temperature`, `top_p`, `top_k`, or `budget_tokens` here — Opus 4.7
 removed them and will 400.
@@ -34,11 +37,11 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from anthropic import AsyncAnthropic
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.logging import get_logger
 from app.tools.registry import ToolRegistry
 
@@ -46,10 +49,8 @@ log = get_logger(__name__)
 
 SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system.md"
 
-ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
-
-@dataclass
+@dataclass(slots=True)
 class TurnResult:
     text: str
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
@@ -60,7 +61,7 @@ class TurnResult:
     latency_ms: int = 0
 
 
-@dataclass
+@dataclass(slots=True)
 class StreamedChunk:
     """Emitted while the model is producing the assistant turn."""
 
@@ -68,13 +69,37 @@ class StreamedChunk:
     is_final: bool = False
 
 
+class LLMClient(Protocol):
+    """Minimal surface the orchestrator needs from a language model.
+
+    Implemented by `ClaudeAgent`; tests swap in `FakeLLMClient`.
+    """
+
+    async def run_turn(
+        self,
+        on_text_chunk: Callable[[StreamedChunk], Awaitable[None]] | None = None,
+    ) -> TurnResult: ...
+
+    def add_user_text(self, text: str) -> None: ...
+
+
 class ClaudeAgent:
     """One ClaudeAgent per call. Holds the running message history."""
 
-    def __init__(self, registry: ToolRegistry) -> None:
-        settings = get_settings()
-        self._client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self._model = settings.anthropic_model
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        settings: Settings | None = None,
+        client: AsyncAnthropic | None = None,
+    ) -> None:
+        self._settings = settings or get_settings()
+        self._client = client or AsyncAnthropic(
+            api_key=self._settings.anthropic_api_key.get_secret_value(),
+            timeout=self._settings.anthropic_timeout_s,
+            max_retries=self._settings.anthropic_max_retries,
+        )
+        self._model = self._settings.anthropic_model
+        self._max_tokens = self._settings.anthropic_max_tokens
         self._registry = registry
         self._messages: list[dict[str, Any]] = []
         self._system = self._build_system_blocks()
@@ -115,10 +140,10 @@ class ClaudeAgent:
         while True:
             assistant_text, content_blocks, usage = await self._stream_once(on_text_chunk)
             result.text += assistant_text
-            result.input_tokens += usage.get("input_tokens", 0)
-            result.output_tokens += usage.get("output_tokens", 0)
-            result.cache_read_tokens += usage.get("cache_read_input_tokens", 0)
-            result.cache_creation_tokens += usage.get("cache_creation_input_tokens", 0)
+            result.input_tokens += usage["input_tokens"]
+            result.output_tokens += usage["output_tokens"]
+            result.cache_read_tokens += usage["cache_read_input_tokens"]
+            result.cache_creation_tokens += usage["cache_creation_input_tokens"]
 
             self._messages.append({"role": "assistant", "content": content_blocks})
 
@@ -176,10 +201,10 @@ class ClaudeAgent:
 
         async with self._client.messages.stream(
             model=self._model,
-            max_tokens=1024,
-            system=self._system,
-            tools=self._tools,
-            messages=self._messages,
+            max_tokens=self._max_tokens,
+            system=self._system,  # type: ignore[arg-type]
+            tools=self._tools,  # type: ignore[arg-type]
+            messages=self._messages,  # type: ignore[arg-type]
             thinking={"type": "adaptive", "display": "summarized"},
             output_config={"effort": "xhigh"},
         ) as stream:

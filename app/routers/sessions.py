@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +17,7 @@ router = APIRouter()
 async def get_call_session(
     call_sid: str,
     db: AsyncSession = Depends(get_session),
-) -> dict:
+) -> dict[str, Any]:
     repo = SessionRepository(db)
     session = await repo.get_with_turns(call_sid)
     if session is None:
