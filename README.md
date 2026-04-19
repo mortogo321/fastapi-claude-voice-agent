@@ -1,21 +1,21 @@
 # fastapi-claude-voice-agent
 
-Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claude Opus 4.7**, **Twilio Media Streams**, **Deepgram Nova-3 STT**, and **ElevenLabs TTS**. Handles inbound PSTN calls and browser WebRTC, runs an agentic tool-use loop with prompt caching and adaptive thinking, and persists every turn to PostgreSQL.
+Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claude Opus 4.7**, **Twilio Media Streams**, **Deepgram Nova-3 STT (speech-to-text)**, and **ElevenLabs TTS (text-to-speech)**. Handles inbound PSTN (public switched telephone network) calls and browser WebRTC (Web Real-Time Communication), runs an agentic tool-use loop with prompt caching and adaptive thinking, and persists every turn to PostgreSQL.
 
 ## Features
 
 - **PSTN voice in/out** via Twilio Programmable Voice + Media Streams (μ-law 8kHz over WebSocket)
 - **Browser WebRTC** endpoint for low-latency demos
 - **Streaming STT** with Deepgram Nova-3 (multilingual: English + Thai)
-- **LLM** Claude Opus 4.7 with **adaptive thinking**, **prompt caching** on the system prompt and tool definitions, and a manual agentic tool-use loop tuned for sub-second voice latency
+- **LLM (large language model)** Claude Opus 4.7 with **adaptive thinking**, **prompt caching** on the system prompt and tool definitions, and a manual agentic tool-use loop tuned for sub-second voice latency
 - **Streaming TTS** with ElevenLabs (eleven_turbo_v2_5)
 - **Real barge-in** — assistant playback runs as a cancellable `asyncio` task; a partial user transcript interrupts it mid-chunk
-- **Tool use** — appointment availability, booking, SMS confirmation
+- **Tool use** — appointment availability, booking, SMS (short message service) confirmation
 - **Persistence** — call sessions, transcript turns, tool calls (PostgreSQL + SQLAlchemy 2.0 async + Alembic)
-- **Hardening** — Twilio webhook HMAC validation, per-process `CallGate` caps concurrent calls, fail-fast settings validation in production
-- **Observability** — structlog JSON logs, request-ID middleware with contextvars correlation across async boundaries, per-stage latency (STT endpointing, LLM TTFT, tool call, TTS TTFB)
+- **Hardening** — Twilio webhook HMAC (hash-based message authentication code) validation, per-process `CallGate` caps concurrent calls, fail-fast settings validation in production
+- **Observability** — structlog JSON logs, request-ID middleware with contextvars correlation across async boundaries, per-stage latency (STT endpointing, LLM TTFT (time-to-first-token), tool call, TTS TTFB (time-to-first-byte))
 - **Containerized** — multi-stage Dockerfile (non-root, healthcheck), docker-compose for local dev (Postgres + Redis + one-shot Alembic migration)
-- **CI** — code quality (ruff format + lint + mypy `--strict`), tests with coverage, docker build — GitHub Actions
+- **CI (continuous integration)** — code quality (ruff format + lint + mypy `--strict`), tests with coverage, docker build — GitHub Actions
 - **Typed pipeline** — `LLMClient`/`STTClient`/`TTSClient` Protocols make every external service swappable for fakes in tests
 
 ## Architecture

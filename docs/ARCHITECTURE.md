@@ -56,9 +56,9 @@ Round-trip target: **< 1.5s** from end-of-user-speech to first TTS audio byte.
 | Stage                  | Budget    | Notes                                |
 |------------------------|-----------|--------------------------------------|
 | Deepgram endpointing   | 300ms     | `endpointing=300` URL param          |
-| LLM TTFT (cached)      | 150-250ms | Cached system + tools                |
+| LLM TTFT (time-to-first-token, cached) | 150-250ms | Cached system + tools    |
 | Tool call (in-process) | 5-50ms    | Demo tools are pure-python           |
-| TTS TTFB               | 200-300ms | `optimize_streaming_latency=3`       |
+| TTS TTFB (time-to-first-byte)          | 200-300ms | `optimize_streaming_latency=3` |
 | μ-law re-encode        | <5ms      | `audioop.ratecv` + `lin2ulaw`        |
 | **Total**              | ~700ms    | Under budget on warm cache           |
 
@@ -118,7 +118,7 @@ JSON-friendly rows; we don't need a vector or time-series store yet.
 
 ## Hardening already in the codebase
 
-- **Twilio webhook HMAC validation** (`app/security.py`) on `/voice/incoming`.
+- **Twilio webhook HMAC (hash-based message authentication code) validation** (`app/security.py`) on `/voice/incoming`.
   Rebuilds the URL from `PUBLIC_BASE_URL` + path so verification survives
   any reverse proxy (ngrok, Cloudflare Tunnel, load balancer). Opt-in
   bypass via `TWILIO_VALIDATE_SIGNATURE=false` for local curl testing.

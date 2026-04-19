@@ -48,6 +48,10 @@ The monthly bill has three layers:
 └───────────────────────────────────────────────┘
 ```
 
+> Glossary for the variable line above: **STT** = speech-to-text,
+> **LLM** = large language model, **TTS** = text-to-speech,
+> **SMS** = short message service (text message).
+
 ### 1. Per-call variable cost
 
 Assumptions for a representative call:
@@ -59,7 +63,7 @@ Assumptions for a representative call:
 
 | Service | Rate | Per 3-min call |
 |---|---|---|
-| Twilio PSTN inbound (US local number) | ~$0.0085 / min | ~$0.026 |
+| Twilio PSTN (public switched telephone network) inbound (US local number) | ~$0.0085 / min | ~$0.026 |
 | Deepgram Nova-3 streaming STT (multilingual) | ~$0.0077 / min | ~$0.023 |
 | ElevenLabs Turbo v2.5 TTS | ~$0.15 / 1k chars | ~$0.135 |
 | Anthropic Claude Opus 4.7 (with prompt caching) | $5 / $25 per 1M in/out | ~$0.06 |
@@ -87,18 +91,18 @@ Notes on each line:
 
 ### 2. Fixed monthly infrastructure
 
-| Component | Typical small deployment | Production HA |
+| Component | Typical small deployment | Production HA (high-availability) |
 |---|---|---|
-| Application host (FastAPI + ASGI)     | $30-60  (2 vCPU / 4 GB)  | $150-300 (HA + reserved) |
-| PostgreSQL (sessions, turns, tools)    | $20-50  (small managed)  | $150-400 (multi-AZ) |
+| Application host (FastAPI + ASGI, async server gateway interface) | $30-60  (2 vCPU / 4 GB)  | $150-300 (HA + reserved) |
+| PostgreSQL (sessions, turns, tools)    | $20-50  (small managed)  | $150-400 (multi-AZ, availability zone) |
 | Redis (concurrency gate, cache)        | $10-25                   | $40-100 |
 | Twilio phone number (US local)         | $1.15                    | $1.15 |
 | Observability (logs, metrics, traces)  | $0-50   (free tiers OK)  | $100-300 |
-| Domain + TLS + CDN/WAF                 | $0-20                    | $20-80 |
+| Domain + TLS + CDN (content delivery network) / WAF (web application firewall) | $0-20 | $20-80 |
 | Secrets manager                        | $0-15                    | $20-40 |
 | **Baseline / month** | **~$60-200** | **~$480-1,200** |
 
-Toll-free numbers, international DIDs, and multi-region deployments add
+Toll-free numbers, international DIDs (direct inward dialing numbers), and multi-region deployments add
 on top. A single US-market deployment on a starter cloud tier fits in
 the ~$100/mo column; regulated industries or global coverage quickly
 push into the four-figure floor.
@@ -107,9 +111,9 @@ push into the four-figure floor.
 
 | Item | Typical cost | Notes |
 |---|---|---|
-| Maintenance engineer (0.1-0.2 FTE) | $1.5k-4k/mo (SEA rates) | Prompt tuning, dependency updates, small bugs |
+| Maintenance engineer (0.1-0.2 FTE, full-time-equivalent) | $1.5k-4k/mo (SEA, Southeast Asia rates) | Prompt tuning, dependency updates, small bugs |
 | 24/7 on-call rotation                | +$100-300/mo           | PagerDuty tier + rotation policy |
-| Compliance (TCPA, STIR/SHAKEN, 10DLC) | ~$200-500 one-time + ~$15/mo | US only; country-specific rules apply |
+| Compliance — TCPA (Telephone Consumer Protection Act), STIR/SHAKEN (call-authenticity standards), 10DLC (10-digit long-code SMS registration) | ~$200-500 one-time + ~$15/mo | US only; country-specific rules apply |
 | Call recording storage               | ~$5-30/mo              | S3/equivalent; scales with retention window |
 
 These are **real** costs but discretionary — you can run without a
@@ -137,7 +141,7 @@ here has negligible return; focus on getting to meaningful volume.
 
 ### Small production — 1,000 calls/month
 
-A small clinic, SMB receptionist, or a single-site booking agent:
+A small clinic, SMB (small and medium business) receptionist, or a single-site booking agent:
 
 | | |
 |---|---|
@@ -214,16 +218,19 @@ Be explicit with stakeholders that the numbers above exclude:
 
 - **Development / build cost** — covered separately.
 - **Professional services** — vendor onboarding, integration work
-  (CRM, calendar, knowledge base), custom voice training.
-- **Data-residency / compliance-driven infra** — HIPAA BAAs, SOC 2
-  auditing, geographic isolation requirements may force premium
-  tiers on every component.
+  (CRM — customer relationship management — calendar, knowledge base),
+  custom voice training.
+- **Data-residency / compliance-driven infra** — HIPAA (Health Insurance
+  Portability and Accountability Act) BAAs (business associate
+  agreements), SOC 2 (Service Organization Control 2) auditing,
+  geographic isolation requirements may force premium tiers on every
+  component.
 - **Call recording transcription for analytics** — a second STT pass
   on stored audio roughly doubles the STT line item.
-- **Customer-facing dashboard / admin UI** — separate frontend project.
-- **Translation or i18n prompt maintenance** — per-language prompt
-  engineering and regression testing.
-- **Insurance, legal review, and VAT** — country-specific.
+- **Customer-facing dashboard / admin UI (user interface)** — separate frontend project.
+- **Translation or i18n (internationalization) prompt maintenance** —
+  per-language prompt engineering and regression testing.
+- **Insurance, legal review, and VAT (value-added tax)** — country-specific.
 
 ---
 
