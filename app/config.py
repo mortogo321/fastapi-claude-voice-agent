@@ -1,5 +1,12 @@
 """Typed application settings with fail-fast validation.
 
+The app reads a single `.env` file. Environment selection happens one step
+earlier — the Dockerfile (or a local `make env` helper) copies the right
+`.env.{development,staging,production}` template to `.env` at build/setup
+time. Templates use `${VAR:-default}` interpolation so real environment
+variables (from CI/CD, Secrets Manager, Kubernetes, etc.) always win over
+the file default.
+
 In `env=production` any missing external-service credential or an invalid
 `public_base_url` raises at startup, not during a call. Non-prod envs keep
 defaults tolerant so local runs, CI, and unit tests don't require secrets.

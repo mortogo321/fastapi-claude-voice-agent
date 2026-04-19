@@ -53,10 +53,14 @@ coverage.xml
 .ruff_cache/
 .mypy_cache/
 
-# Env / secrets
+# Env / secrets.
+# Per-env templates are tracked (safe defaults + ${VAR:-default} expansion).
+# Local `.env` is always gitignored; put real secrets there.
 .env
 .env.*
-!.env.example
+!.env.development
+!.env.staging
+!.env.production
 
 # Local data
 *.db

@@ -1,7 +1,15 @@
-.PHONY: install fmt lint typecheck test test-cov run up down migrate clean
+.PHONY: env install fmt lint typecheck test test-cov run up down migrate clean
 
 PY := .venv/bin/python
 PIP := .venv/bin/pip
+ENV ?= development
+
+# Copy the per-env template to `.env` (what config.py actually reads).
+# Usage: `make env` (dev) or `make env ENV=staging|production`.
+env:
+	@test -f .env.$(ENV) || { echo "missing .env.$(ENV)"; exit 1; }
+	cp .env.$(ENV) .env
+	@echo "copied .env.$(ENV) -> .env"
 
 install:
 	python3 -m venv .venv

@@ -12,7 +12,9 @@ __pycache__
 htmlcov
 .env
 .env.*
-!.env.example
+!.env.development
+!.env.staging
+!.env.production
 docs
 README.md
 *.md

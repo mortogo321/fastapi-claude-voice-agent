@@ -1,9 +1,12 @@
 services:
   migrate:
-    build: .
+    build:
+      context: .
+      args:
+        # Bakes .env.${ENV} → /app/.env into the image at build time.
+        # Set ENV=staging / production in your shell, then `docker compose up --build`.
+        ENV: ${ENV:-development}
     command: ["alembic", "upgrade", "head"]
-    env_file:
-      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://voice:voice@db:5432/voice
     volumes:
@@ -15,11 +18,12 @@ services:
     restart: "no"
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        ENV: ${ENV:-development}
     ports:
       - "8000:8000"
-    env_file:
-      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://voice:voice@db:5432/voice
       REDIS_URL: redis://redis:6379/0

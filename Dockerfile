@@ -21,6 +21,12 @@ RUN pip install --upgrade pip && \
 # --- runtime ---
 FROM python:3.12-slim AS runtime
 
+# Build-time environment selector. Valid values: development | staging | production.
+# The matching `.env.${ENV}` template is baked into the image as `/app/.env`.
+# Templates use `${VAR:-default}` so real env vars (from Secrets Manager, K8s,
+# CI/CD, compose `environment:`) always win over the file default at runtime.
+ARG ENV=development
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000
@@ -31,6 +37,7 @@ WORKDIR /app
 
 COPY --from=builder /install /usr/local
 COPY app ./app
+COPY .env.${ENV} /app/.env
 
 USER app
 
