@@ -16,8 +16,9 @@ htmlcov
 !.env.staging
 !.env.production
 docs
-README.md
+# README.md is referenced by pyproject.toml `readme =` and must stay in context.
 *.md
+!README.md
 !app/prompts/*.md
 docker-compose.yml
 docker-compose.override.yml
