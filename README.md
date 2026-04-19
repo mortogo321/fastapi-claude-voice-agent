@@ -40,7 +40,9 @@ Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claud
                   PostgreSQL  (sessions, turns, tool calls)
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deep dive, and
+[docs/COST.md](docs/COST.md) for monthly cost-of-ownership estimates at
+different call volumes.
 
 ## Quickstart
 
