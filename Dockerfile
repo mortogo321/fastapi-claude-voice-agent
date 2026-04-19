@@ -31,6 +31,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000
 
+# Patch base-image OS packages so we don't inherit CVEs fixed upstream
+# but not yet rebuilt into `python:3.12-slim`. Trivy (HIGH+CRITICAL,
+# fixed-only) gates CI so any remaining finding is a real risk we chose
+# to accept, not a lag in the base image.
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system app && useradd --system --gid app --home /app app
 
 WORKDIR /app
