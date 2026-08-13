@@ -180,7 +180,7 @@ into a git hook — run `pre-commit install` once per checkout.
 │   │   └── repositories.py      # SessionRepository façade
 │   └── prompts/system.md        # cached system prompt
 ├── migrations/                  # Alembic env + versions/
-│   └── versions/0001_initial_schema.py
+│   └── versions/20260419_0700_0001_initial_schema.py
 ├── tests/                       # pytest (audio, tools, llm wiring, health, orchestrator)
 ├── docs/ARCHITECTURE.md         # pipeline, latency budget, design rationale
 ├── .github/workflows/ci.yml     # quality → test → docker build
