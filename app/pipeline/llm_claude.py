@@ -1,14 +1,20 @@
-"""Claude Opus 4.7 client for the voice agent.
+"""Claude Opus 5 client for the voice agent.
 
 Design choices, all from the claude-api skill mandates:
 
-- Model: `claude-opus-4-7` (never downgrade unless explicitly asked).
-- `thinking={"type": "adaptive"}` — Opus 4.7 only accepts adaptive thinking;
+- Model: `claude-opus-5` (never downgrade unless explicitly asked).
+- `thinking={"type": "adaptive"}` — thinking is ON by default on Opus 5, but
+  we still set this explicitly so `display="summarized"` takes effect;
   `enabled` + `budget_tokens` returns 400 on this model.
 - `display="summarized"` so the user sees thinking progress instead of a
-  silent pause (default on 4.7 is `omitted`).
+  silent pause (default on Opus 5 is `omitted`).
 - `effort="xhigh"` inside `output_config` — best balance for agentic voice
-  on Opus 4.7 (`max` is reserved for offline correctness-critical work).
+  on Opus 5 (`max` is reserved for offline correctness-critical work). We
+  never disable thinking here, so the "disabled thinking + xhigh/max effort
+  returns 400" pitfall on Opus 5 does not apply.
+- `anthropic_max_tokens` (see `app/config.py`) caps thinking + spoken text
+  *together* on Opus 5 — it was bumped from 1024 to 4096 so adaptive
+  thinking at `xhigh` effort can't crowd out the actual reply.
 - **Prompt caching** on:
     1. The system prompt (loaded from `app/prompts/system.md`).
     2. The tool JSON schema list.
@@ -19,14 +25,20 @@ Design choices, all from the claude-api skill mandates:
     * begin streaming TTS as soon as the first text block appears,
     * record per-tool-call latency,
     * abort cleanly on barge-in.
+- `stop_reason == "refusal"` is handled as a graceful decline: no tool
+  results to feed back, and we fall back to a fixed apology line if the
+  model produced no visible text (see `_REFUSAL_FALLBACK_TEXT` below).
 - Streaming with `client.messages.stream(...)` — required for any voice
   request that may run long; we use `.get_final_message()` to collect the
   full response before resuming the loop.
 - Transport resilience comes from the SDK's `max_retries` (exponential
   backoff on `APIConnectionError`, 408, 409, 429, 5xx) and per-request
   `timeout`. We surface both as settings rather than hard-coding them.
+- We deliberately do NOT adopt the `fallbacks` (model-fallbacks) beta —
+  out of scope for this migration; a refusal is surfaced to the caller
+  instead of being silently retried on another model.
 
-NEVER set `temperature`, `top_p`, `top_k`, or `budget_tokens` here — Opus 4.7
+NEVER set `temperature`, `top_p`, `top_k`, or `budget_tokens` here — Opus 5
 removed them and will 400.
 """
 
@@ -48,6 +60,10 @@ from app.tools.registry import ToolRegistry
 log = get_logger(__name__)
 
 SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system.md"
+
+# Spoken fallback when Claude refuses (stop_reason == "refusal") and produced
+# no visible text to speak — keeps the call graceful instead of going silent.
+_REFUSAL_FALLBACK_TEXT = "Sorry, I can't help with that. Is there something else I can do for you?"
 
 
 @dataclass(slots=True)
@@ -138,7 +154,9 @@ class ClaudeAgent:
         result = TurnResult(text="")
 
         while True:
-            assistant_text, content_blocks, usage = await self._stream_once(on_text_chunk)
+            assistant_text, content_blocks, usage, stop_reason = await self._stream_once(
+                on_text_chunk
+            )
             result.text += assistant_text
             result.input_tokens += usage["input_tokens"]
             result.output_tokens += usage["output_tokens"]
@@ -146,6 +164,15 @@ class ClaudeAgent:
             result.cache_creation_tokens += usage["cache_creation_input_tokens"]
 
             self._messages.append({"role": "assistant", "content": content_blocks})
+
+            if stop_reason == "refusal":
+                # Safety classifiers declined this turn — nothing to feed back
+                # to the model, so treat it as a graceful "can't help" reply
+                # rather than continuing the tool loop.
+                log.warning("llm.refusal", text_len=len(result.text))
+                if not result.text.strip():
+                    result.text = _REFUSAL_FALLBACK_TEXT
+                break
 
             tool_uses = [b for b in content_blocks if b.get("type") == "tool_use"]
             if not tool_uses:
@@ -195,8 +222,8 @@ class ClaudeAgent:
     async def _stream_once(
         self,
         on_text_chunk: Callable[[StreamedChunk], Awaitable[None]] | None,
-    ) -> tuple[str, list[dict[str, Any]], dict[str, int]]:
-        """Stream one model response. Returns (text, content_blocks, usage)."""
+    ) -> tuple[str, list[dict[str, Any]], dict[str, int], str | None]:
+        """Stream one model response. Returns (text, content_blocks, usage, stop_reason)."""
         text_buf: list[str] = []
 
         async with self._client.messages.stream(
@@ -226,7 +253,7 @@ class ClaudeAgent:
             "cache_creation_input_tokens": getattr(final.usage, "cache_creation_input_tokens", 0)
             or 0,
         }
-        return "".join(text_buf), content_blocks, usage
+        return "".join(text_buf), content_blocks, usage, final.stop_reason
 
     @staticmethod
     async def _iter_text_deltas(stream: Any) -> AsyncIterator[str]:

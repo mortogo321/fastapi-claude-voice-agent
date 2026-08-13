@@ -40,8 +40,13 @@ class Settings(BaseSettings):
 
     # Anthropic
     anthropic_api_key: SecretStr = SecretStr("")
-    anthropic_model: str = "claude-opus-4-7"
-    anthropic_max_tokens: int = Field(default=1024, ge=64, le=8192)
+    anthropic_model: str = "claude-opus-5"
+    # Thinking is on by default on Opus 5 and shares this budget with the
+    # spoken response (max_tokens caps thinking + text together) — 1024 was
+    # already tight for adaptive thinking at effort=xhigh and would now risk
+    # truncating the reply before any text is produced. 4096 leaves adequate
+    # headroom while keeping voice-call latency reasonable.
+    anthropic_max_tokens: int = Field(default=4096, ge=64, le=8192)
     anthropic_timeout_s: float = Field(default=30.0, gt=0.0)
     anthropic_max_retries: int = Field(default=3, ge=0, le=6)
 

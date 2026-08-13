@@ -27,6 +27,6 @@ def test_last_tool_is_cached_first_is_not():
     assert tools[-1]["cache_control"] == {"type": "ephemeral"}
 
 
-def test_uses_opus_4_7_model_by_default():
+def test_uses_opus_5_model_by_default():
     agent = ClaudeAgent(build_default_registry())
-    assert agent._model == "claude-opus-4-7"
+    assert agent._model == "claude-opus-5"

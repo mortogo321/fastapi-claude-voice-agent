@@ -1,13 +1,13 @@
 # fastapi-claude-voice-agent
 
-Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claude Opus 4.7**, **Twilio Media Streams**, **Deepgram Nova-3 STT (speech-to-text)**, and **ElevenLabs TTS (text-to-speech)**. Handles inbound PSTN (public switched telephone network) calls and browser WebRTC (Web Real-Time Communication), runs an agentic tool-use loop with prompt caching and adaptive thinking, and persists every turn to PostgreSQL.
+Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claude Opus 5**, **Twilio Media Streams**, **Deepgram Nova-3 STT (speech-to-text)**, and **ElevenLabs TTS (text-to-speech)**. Handles inbound PSTN (public switched telephone network) calls and browser WebRTC (Web Real-Time Communication), runs an agentic tool-use loop with prompt caching and adaptive thinking, and persists every turn to PostgreSQL.
 
 ## Features
 
 - **PSTN voice in/out** via Twilio Programmable Voice + Media Streams (μ-law 8kHz over WebSocket)
 - **Browser WebRTC** endpoint for low-latency demos
 - **Streaming STT** with Deepgram Nova-3 (multilingual: English + Thai)
-- **LLM (large language model)** Claude Opus 4.7 with **adaptive thinking**, **prompt caching** on the system prompt and tool definitions, and a manual agentic tool-use loop tuned for sub-second voice latency
+- **LLM (large language model)** Claude Opus 5 with **adaptive thinking**, **prompt caching** on the system prompt and tool definitions, and a manual agentic tool-use loop tuned for sub-second voice latency
 - **Streaming TTS** with ElevenLabs (eleven_turbo_v2_5)
 - **Real barge-in** — assistant playback runs as a cancellable `asyncio` task; a partial user transcript interrupts it mid-chunk
 - **Tool use** — appointment availability, booking, SMS (short message service) confirmation
@@ -32,7 +32,7 @@ Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claud
  (μ-law⇄PCM)     (streaming STT)            (streaming TTS)
                        │                        ▲
                        ▼                        │
-                  Orchestrator ──▶ Claude Opus 4.7
+                  Orchestrator ──▶ Claude Opus 5
                        │            (adaptive thinking,
                        │             prompt caching,
                        │             tool use loop)
@@ -195,7 +195,7 @@ into a git hook — run `pre-commit install` once per checkout.
 ## Design notes
 
 ### Why adaptive thinking
-Opus 4.7 ships with adaptive thinking — the model decides when to reason vs. respond fast. For voice (where latency matters more than the last 5% of reasoning quality), this beats fixed `budget_tokens` (which is also no longer accepted on 4.7).
+Opus 5 ships with adaptive thinking (on by default) — the model decides when to reason vs. respond fast. For voice (where latency matters more than the last 5% of reasoning quality), this beats fixed `budget_tokens` (which is also no longer accepted on this model).
 
 ### Why prompt caching
 The system prompt and the tool JSON schemas don't change between turns. We mark them with `cache_control: {"type": "ephemeral"}` so every follow-up turn in the same call reads them at the cached rate (~10× cheaper, faster TTFT).
