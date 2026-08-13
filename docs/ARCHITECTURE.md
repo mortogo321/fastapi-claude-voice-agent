@@ -30,7 +30,7 @@
                                          ▼
                                 ┌─────────────────┐
                                 │  ClaudeAgent    │
-                                │  Opus 4.7       │
+                                │  Opus 5         │
                                 │  + adaptive     │
                                 │  + xhigh effort │
                                 │  + cached sys   │
@@ -64,14 +64,14 @@ Round-trip target: **< 1.5s** from end-of-user-speech to first TTS audio byte.
 
 ## Why these choices
 
-### Claude Opus 4.7 with adaptive thinking
-Opus 4.7 dynamically allocates thinking tokens. For voice we want fast on
+### Claude Opus 5 with adaptive thinking
+Opus 5 dynamically allocates thinking tokens. For voice we want fast on
 simple turns ("yes, 11am works"), deeper on complex ones ("can you check
 next week and a few options on the 28th"). The `enabled` mode with a fixed
-`budget_tokens` is rejected on 4.7 — adaptive is the only on-mode.
+`budget_tokens` is rejected on Opus 5 — adaptive is the only on-mode.
 
 ### Effort `xhigh`
-Best balance for agentic voice on Opus 4.7 according to the SDK skill —
+Best balance for agentic voice on Opus 5 according to the SDK skill —
 better tool selection than `high`, faster than `max`, which is reserved
 for offline correctness-critical work.
 

@@ -22,7 +22,7 @@ Numbers here are a planning tool, not a quote.
 Two drivers dominate:
 
 1. **Call volume** — 90% of the bill above ~5k calls/mo is variable cost.
-2. **Model + voice choice** — Opus 4.7 + ElevenLabs premium is the
+2. **Model + voice choice** — Opus 5 + ElevenLabs premium is the
    top tier; swapping either can cut 30-50% off per-call cost.
 
 The fixed-infrastructure floor is **~$60-200/month** no matter the
@@ -66,7 +66,7 @@ Assumptions for a representative call:
 | Twilio PSTN (public switched telephone network) inbound (US local number) | ~$0.0085 / min | ~$0.026 |
 | Deepgram Nova-3 streaming STT (multilingual) | ~$0.0077 / min | ~$0.023 |
 | ElevenLabs Turbo v2.5 TTS | ~$0.15 / 1k chars | ~$0.135 |
-| Anthropic Claude Opus 4.7 (with prompt caching) | $5 / $25 per 1M in/out | ~$0.06 |
+| Anthropic Claude Opus 5 (with prompt caching) | $5 / $25 per 1M in/out | ~$0.06 |
 | Twilio SMS confirmation (US) | ~$0.008 / message | ~$0.008 |
 | **Total** | | **~$0.26 / call** |
 
@@ -83,7 +83,7 @@ Notes on each line:
   Business: ~$0.10/1k and below). A different TTS vendor (Deepgram Aura,
   Azure Neural, Google Chirp3-HD) cuts this by 50-90% at the cost of
   some voice quality.
-- **Anthropic Claude Opus 4.7** is the premium tier. Prompt caching
+- **Anthropic Claude Opus 5** is the premium tier. Prompt caching
   makes follow-up turns ~10× cheaper on the cached prefix, which is
   why per-call LLM cost stays under $0.10 even with adaptive thinking
   enabled. Switching to **Sonnet 4.6** ($3/$15 per 1M) cuts this line
@@ -197,7 +197,7 @@ Knobs you can turn if the quote above is too high:
 
 | Lever | How to pull it | Typical saving |
 |---|---|---|
-| LLM tier | Opus 4.7 → Sonnet 4.6 → Haiku 4.5 | 70% / 95% off LLM line |
+| LLM tier | Opus 5 → Sonnet 4.6 → Haiku 4.5 | 70% / 95% off LLM line |
 | TTS vendor | ElevenLabs → Deepgram Aura / Azure / Google | 50-90% off TTS line |
 | Vendor commits | Month-to-month → 6-12 mo annual commit | 20-40% across all API lines |
 | Call duration | Prompt tuning to shorten calls | Linear with minutes saved |
