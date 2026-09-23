@@ -1,5 +1,10 @@
 # fastapi-claude-voice-agent
 
+[![CI](https://github.com/mortogo321/fastapi-claude-voice-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/mortogo321/fastapi-claude-voice-agent/actions/workflows/ci.yml)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Production-ready realtime voice AI agent built on **FastAPI**, **Anthropic Claude Opus 5**, **Twilio Media Streams**, **Deepgram Nova-3 STT (speech-to-text)**, and **ElevenLabs TTS (text-to-speech)**. Handles inbound PSTN (public switched telephone network) calls and browser WebRTC (Web Real-Time Communication), runs an agentic tool-use loop with prompt caching and adaptive thinking, and persists every turn to PostgreSQL.
 
 ## Features

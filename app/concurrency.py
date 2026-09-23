@@ -22,6 +22,15 @@ class GateFull(RuntimeError):
 
 
 class CallGate:
+    """Semaphore-backed cap with a synchronous `active` counter.
+
+    `active` is the source of truth for `/health` and the Twilio
+    `active >= max` pre-check. It is mutated only in synchronous sections
+    (no `await` between check and increment), which is atomic on a
+    single-threaded asyncio loop. The semaphore stays in sync so `slot()`
+    blocks correctly when the gate is full.
+    """
+
     def __init__(self, max_concurrent: int) -> None:
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be >= 1")
@@ -39,20 +48,27 @@ class CallGate:
         return self._active
 
     def try_acquire_nowait(self) -> bool:
-        """Non-blocking acquire. Returns False when the gate is full."""
-        if self._sem.locked():
-            return False
-        acquired = self._sem._value > 0 and self._try_take()
-        return acquired
+        """Non-blocking acquire. Returns False when the gate is full.
 
-    def _try_take(self) -> bool:
-        # asyncio.Semaphore has no public non-blocking acquire; emulate one.
-        if self._sem._value <= 0:
+        Keeps the semaphore and the `active` counter in sync: every
+        successful acquire consumes one semaphore permit and increments
+        `active`, so `slot()` and the Twilio pre-check observe the same
+        capacity. Call `release()` exactly once per `True` return.
+        """
+        if self._active >= self._max or self._sem.locked():
             return False
-        self._sem._value -= 1
+        # asyncio.Semaphore exposes no public non-blocking acquire; the
+        # check-then-decrement below is atomic because this section holds
+        # no `await` on a single-threaded event loop.
+        self._sem._value -= 1  # private API: no public nowait acquire exists
+        self._active += 1
         return True
 
     def release(self) -> None:
+        """Release one permit acquired via `try_acquire_nowait`."""
+        if self._active <= 0:
+            raise RuntimeError("CallGate.release() without a matching acquire")
+        self._active -= 1
         self._sem.release()
 
     @asynccontextmanager
