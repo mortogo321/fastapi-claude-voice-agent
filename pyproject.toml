@@ -8,16 +8,16 @@ license = { text = "MIT" }
 authors = [{ name = "Somchai Juntapracon" }]
 dependencies = [
     "fastapi>=0.141.1",
-    "uvicorn[standard]>=0.52.3",
-    "anthropic>=0.122.0",
+    "uvicorn[standard]>=0.53.0",
+    "anthropic>=1.8.0",
     "httpx[http2]>=0.28.1",
     "websockets>=17.0.1",
-    "twilio>=9.11.0",
-    "pydantic>=2.13.4",
+    "twilio>=9.11.1",
+    "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
-    "sqlalchemy[asyncio]>=2.0.52",
+    "sqlalchemy[asyncio]>=2.0.54",
     "asyncpg>=0.31.0",
-    "alembic>=1.19.1",
+    "alembic>=1.20.0",
     "redis>=8.1.0",
     "structlog>=26.1.0",
     "python-multipart>=0.0.32",
@@ -29,8 +29,8 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
-    "ruff>=0.16.3",
-    "mypy>=2.3.0",
+    "ruff>=0.16.8",
+    "mypy>=2.3.1",
     "httpx>=0.28.1",
 ]
 
