@@ -30,7 +30,7 @@
                                          ▼
                                 ┌─────────────────┐
                                 │  ClaudeAgent    │
-                                │  Opus 5         │
+                                │  Opus 5.5       │
                                 │  + adaptive     │
                                 │  + xhigh effort │
                                 │  + cached sys   │
@@ -64,21 +64,22 @@ Round-trip target: **< 1.5s** from end-of-user-speech to first TTS audio byte.
 
 ## Why these choices
 
-### Claude Opus 5 with adaptive thinking
-Opus 5 dynamically allocates thinking tokens. For voice we want fast on
+### Claude Opus 5.5 with adaptive thinking
+Opus 5.5 dynamically allocates thinking tokens. For voice we want fast on
 simple turns ("yes, 11am works"), deeper on complex ones ("can you check
 next week and a few options on the 28th"). The `enabled` mode with a fixed
-`budget_tokens` is rejected on Opus 5 — adaptive is the only on-mode.
+`budget_tokens` is rejected on Opus 5.5 — adaptive is the only mode (thinking cannot be disabled).
 
 ### Effort `xhigh`
-Best balance for agentic voice on Opus 5 according to the SDK skill —
-better tool selection than `high`, faster than `max`, which is reserved
-for offline correctness-critical work.
+Carried over from the Opus 5 tuning — better tool selection than `high`,
+faster than `max`, which is reserved for offline correctness-critical work.
+Opus 5.5 defaults to `medium` and runs longer turns at `xhigh`, so re-sweep
+`medium`/`high` against the latency budget before keeping it.
 
 ### Prompt caching
 Both the system prompt and the tool list are stable per call. Marking the
 last block in each list with `cache_control: ephemeral` collapses TTFT on
-follow-up turns from ~700ms to ~150ms and cuts per-turn cost ~10×.
+follow-up turns from ~700ms to ~150ms and cuts cached-prefix input cost ~20×.
 
 ### Manual tool loop (not `tool_runner`)
 The SDK's `tool_runner` is convenient for batch agents but does not let us

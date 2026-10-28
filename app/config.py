@@ -40,8 +40,8 @@ class Settings(BaseSettings):
 
     # Anthropic
     anthropic_api_key: SecretStr = SecretStr("")
-    anthropic_model: str = "claude-opus-5"
-    # Thinking is on by default on Opus 5 and shares this budget with the
+    anthropic_model: str = "claude-opus-5-5"
+    # Thinking is on by default on Opus 5.5 (always on) and shares this budget with the
     # spoken response (max_tokens caps thinking + text together) — 1024 was
     # already tight for adaptive thinking at effort=xhigh and would now risk
     # truncating the reply before any text is produced. 4096 leaves adequate

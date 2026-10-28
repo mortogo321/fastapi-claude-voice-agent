@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="fastapi-claude-voice-agent",
     version=__version__,
-    description="Realtime voice AI agent on Claude Opus 5.",
+    description="Realtime voice AI agent on Claude Opus 5.5.",
     lifespan=lifespan,
 )
 

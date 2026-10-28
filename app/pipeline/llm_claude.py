@@ -1,19 +1,21 @@
-"""Claude Opus 5 client for the voice agent.
+"""Claude Opus 5.5 client for the voice agent.
 
 Design choices, all from the claude-api skill mandates:
 
-- Model: `claude-opus-5` (never downgrade unless explicitly asked).
-- `thinking={"type": "adaptive"}` — thinking is ON by default on Opus 5, but
-  we still set this explicitly so `display="summarized"` takes effect;
-  `enabled` + `budget_tokens` returns 400 on this model.
+- Model: `claude-opus-5-5` (never downgrade unless explicitly asked).
+- `thinking={"type": "adaptive"}` — thinking is always on for Opus 5.5 (it
+  cannot be disabled), but we still set this explicitly so
+  `display="summarized"` takes effect; `disabled` and `enabled` +
+  `budget_tokens` both return 400 on this model.
 - `display="summarized"` so the user sees thinking progress instead of a
-  silent pause (default on Opus 5 is `omitted`).
-- `effort="xhigh"` inside `output_config` — best balance for agentic voice
-  on Opus 5 (`max` is reserved for offline correctness-critical work). We
-  never disable thinking here, so the "disabled thinking + xhigh/max effort
-  returns 400" pitfall on Opus 5 does not apply.
+  silent pause (default on Opus 5.5 is `omitted`).
+- `effort="xhigh"` inside `output_config` — carried over from the Opus 5
+  tuning (`max` stays reserved for offline correctness-critical work).
+  Opus 5.5 defaults to `medium` (Opus 5 defaulted to `high`) and runs
+  longer turns at `xhigh`, so always set effort explicitly and re-sweep
+  `medium`/`high` against the call latency budget before keeping `xhigh`.
 - `anthropic_max_tokens` (see `app/config.py`) caps thinking + spoken text
-  *together* on Opus 5 — it was bumped from 1024 to 4096 so adaptive
+  *together* on Opus 5.5 — it was bumped from 1024 to 4096 so adaptive
   thinking at `xhigh` effort can't crowd out the actual reply.
 - **Prompt caching** on:
     1. The system prompt (loaded from `app/prompts/system.md`).
@@ -39,7 +41,7 @@ Design choices, all from the claude-api skill mandates:
   instead of being silently retried on another model.
 
 NEVER set `temperature`, `top_p`, `top_k`, or `budget_tokens` here — Opus 5
-removed them and will 400.
+removed them and Opus 5.5 keeps them removed; both will 400.
 """
 
 from __future__ import annotations
