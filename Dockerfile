@@ -45,6 +45,11 @@ RUN groupadd --system app && useradd --system --gid app --home /app app
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
+
+# pip bundles vendored urllib3/msgpack/setuptools that Trivy flags and that pip
+# upgrades cannot fix (26.2.2 is latest). Runtime never needs pip, so drop it.
+RUN python -m pip uninstall -y pip
+
 COPY app ./app
 COPY .env.${ENV} /app/.env
 
