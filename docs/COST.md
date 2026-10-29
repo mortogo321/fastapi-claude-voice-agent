@@ -86,8 +86,8 @@ Notes on each line:
 - **Anthropic Claude Opus 5.5** is the premium tier. Prompt caching
   makes follow-up turns ~20× cheaper on the cached prefix, which is
   why per-call LLM cost stays under $0.10 even with adaptive thinking
-  enabled. Switching to **Sonnet 4.6** ($3/$15 per 1M) cuts this line
-  to ~$0.015. Haiku 4.5 cuts it to ~$0.005.
+  enabled. Switching to **Sonnet 5.5** ($2/$10 per 1M) cuts this line
+  to ~$0.03. Haiku 5.5 ($0.10/$0.50 per 1M) cuts it to ~$0.0015.
 
 ### 2. Fixed monthly infrastructure
 
@@ -197,7 +197,7 @@ Knobs you can turn if the quote above is too high:
 
 | Lever | How to pull it | Typical saving |
 |---|---|---|
-| LLM tier | Opus 5.5 → Sonnet 4.6 → Haiku 4.5 | 70% / 95% off LLM line |
+| LLM tier | Opus 5.5 → Sonnet 5.5 → Haiku 5.5 | 50% / ~97% off LLM line |
 | TTS vendor | ElevenLabs → Deepgram Aura / Azure / Google | 50-90% off TTS line |
 | Vendor commits | Month-to-month → 6-12 mo annual commit | 20-40% across all API lines |
 | Call duration | Prompt tuning to shorten calls | Linear with minutes saved |
